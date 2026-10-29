@@ -1,5 +1,9 @@
 # Multi-Tenant Operations Hub
 
+**Live demo:** https://multi-tenant-operations-hub.vercel.app
+
+**Try it:** sign in as admin@acme.test / password123, then in a private window as admin@globex.test / password123. Each organization sees only its own data. You can also create your own organization from the sign-up page.
+
 A multi-tenant operations and workflow automation dashboard built with **Next.js 16 (App Router)**, **TypeScript**, **Tailwind CSS v4**, **Prisma** and **PostgreSQL**.
 
 Multiple organizations share one database. Every row that belongs to a tenant carries an `organizationId`, and every query filters on it — so one organization can never read or change another's data.
