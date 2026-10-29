@@ -1,0 +1,122 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model Organization {
+  id        String   @id @default(uuid())
+  name      String
+  slug      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users     User[]
+  clients   Client[]
+  projects  Project[]
+  workflows Workflow[]
+}
+
+model User {
+  id             String       @id @default(uuid())
+  email          String       @unique
+  passwordHash   String
+  name           String
+  role           Role         @default(MEMBER)
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@index([organizationId])
+}
+
+model Client {
+  id             String       @id @default(uuid())
+  name           String
+  email          String
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  projects       Project[]
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  // A client email is unique per tenant, not globally
+  @@unique([organizationId, email])
+  @@index([organizationId])
+}
+
+model Project {
+  id             String        @id @default(uuid())
+  title          String
+  description    String?
+  status         ProjectStatus @default(PENDING)
+  dueDate        DateTime?
+  organizationId String
+  organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  clientId       String
+  client         Client        @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  @@index([organizationId, status])
+  @@index([organizationId, createdAt])
+}
+
+// Simple automation: "when TRIGGER happens, do ACTION"
+model Workflow {
+  id             String          @id @default(uuid())
+  name           String
+  trigger        WorkflowTrigger
+  action         WorkflowAction
+  config         Json            @default("{}")
+  isActive       Boolean         @default(true)
+  organizationId String
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  runs           WorkflowRun[]
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  @@index([organizationId, trigger, isActive])
+}
+
+model WorkflowRun {
+  id         String    @id @default(uuid())
+  workflowId String
+  workflow   Workflow  @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  status     RunStatus
+  input      Json
+  error      String?
+  createdAt  DateTime  @default(now())
+
+  @@index([workflowId, createdAt])
+}
+
+enum Role {
+  ADMIN
+  MEMBER
+}
+
+enum ProjectStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+}
+
+enum WorkflowTrigger {
+  PROJECT_CREATED
+  PROJECT_STATUS_CHANGED
+}
+
+enum WorkflowAction {
+  LOG_ACTIVITY
+  SEND_WEBHOOK
+}
+
+enum RunStatus {
+  SUCCESS
+  FAILED
+}
