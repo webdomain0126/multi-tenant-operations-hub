@@ -192,7 +192,6 @@ export default async function DashboardPage() {
                       </p>
                       <p className="shrink-0 text-xs text-slate-500">
                         <LocalTime iso={log.createdAt.toISOString()} />
-                        {log.ipAddress && <span className="ml-2 hidden sm:inline">· {log.ipAddress}</span>}
                       </p>
                     </li>
                   );
