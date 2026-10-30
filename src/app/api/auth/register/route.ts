@@ -3,6 +3,7 @@ import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { ApiError, handleError, parseJson } from "@/lib/api";
 import { createSession } from "@/lib/session";
+import { recordAudit } from "@/lib/audit";
 import { registerSchema } from "@/lib/validations";
 
 function slugify(name: string): string {
@@ -33,6 +34,15 @@ export async function POST(req: Request) {
           organizationId: org.id,
         },
       });
+    });
+
+    await recordAudit({
+      organizationId: user.organizationId,
+      actorId: user.id,
+      action: "org.created",
+      targetType: "Organization",
+      targetId: user.organizationId,
+      metadata: { name: input.organizationName },
     });
 
     await createSession({ userId: user.id, organizationId: user.organizationId, role: user.role });

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { handleError, parseJson, requireSession } from "@/lib/api";
+import { recordAudit } from "@/lib/audit";
 import { createClientSchema } from "@/lib/validations";
 
 export async function GET() {
@@ -19,9 +20,20 @@ export async function GET() {
 
 export async function POST(req: Request) {
   try {
-    const { organizationId } = await requireSession();
+    const session = await requireSession();
+    const { organizationId } = session;
     const input = await parseJson(req, createClientSchema);
     const client = await prisma.client.create({ data: { ...input, organizationId } });
+
+    await recordAudit({
+      organizationId,
+      actorId: session.userId,
+      action: "client.created",
+      targetType: "Client",
+      targetId: client.id,
+      metadata: { name: client.name },
+    });
+
     return NextResponse.json(client, { status: 201 });
   } catch (err) {
     return handleError(err);

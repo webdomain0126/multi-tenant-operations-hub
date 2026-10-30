@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { ApiError, handleError, parseJson, requireAdmin, requireSession } from "@/lib/api";
+import { recordAudit } from "@/lib/audit";
 import { updateProjectSchema } from "@/lib/validations";
 import { dispatchWorkflowEvent } from "@/lib/workflows";
 
@@ -29,7 +30,8 @@ export async function GET(_req: Request, { params }: Ctx) {
 
 export async function PATCH(req: Request, { params }: Ctx) {
   try {
-    const { organizationId } = await requireSession();
+    const session = await requireSession();
+    const { organizationId } = session;
     const { id } = await params;
     const input = await parseJson(req, updateProjectSchema);
 
@@ -39,6 +41,21 @@ export async function PATCH(req: Request, { params }: Ctx) {
       where: { id: before.id },
       data: input,
       include: { client: { select: { id: true, name: true } } },
+    });
+
+    await recordAudit({
+      organizationId,
+      actorId: session.userId,
+      action: "project.updated",
+      targetType: "Project",
+      targetId: updated.id,
+      metadata: {
+        title: updated.title,
+        fields: Object.keys(input),
+        ...(input.status && input.status !== before.status
+          ? { from: before.status, to: updated.status }
+          : {}),
+      },
     });
 
     if (input.status && input.status !== before.status) {
@@ -62,11 +79,23 @@ export async function DELETE(_req: Request, { params }: Ctx) {
     requireAdmin(session);
     const { id } = await params;
 
+    // Read first so the audit log can keep the title after the row is gone
+    const project = await findOwned(id, session.organizationId);
+
     // deleteMany with a tenant filter is atomic and can't touch other orgs
     const { count } = await prisma.project.deleteMany({
-      where: { id, organizationId: session.organizationId },
+      where: { id: project.id, organizationId: session.organizationId },
     });
     if (count === 0) throw new ApiError(404, "Project not found");
+
+    await recordAudit({
+      organizationId: session.organizationId,
+      actorId: session.userId,
+      action: "project.deleted",
+      targetType: "Project",
+      targetId: project.id,
+      metadata: { title: project.title },
+    });
 
     return new NextResponse(null, { status: 204 });
   } catch (err) {

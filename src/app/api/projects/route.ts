@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { ApiError, handleError, parseJson, requireSession } from "@/lib/api";
 import { createProjectSchema, listProjectsQuerySchema } from "@/lib/validations";
 import { dispatchWorkflowEvent } from "@/lib/workflows";
+import { recordAudit } from "@/lib/audit";
 
 // GET /api/projects?status=PENDING&page=1&pageSize=20
 export async function GET(req: Request) {
@@ -36,7 +37,8 @@ export async function GET(req: Request) {
 // POST /api/projects
 export async function POST(req: Request) {
   try {
-    const { organizationId } = await requireSession();
+    const session = await requireSession();
+    const { organizationId } = session;
     const input = await parseJson(req, createProjectSchema);
 
     // Critical isolation check: the client must belong to THIS tenant.
@@ -50,6 +52,15 @@ export async function POST(req: Request) {
     const project = await prisma.project.create({
       data: { ...input, organizationId },
       include: { client: { select: { id: true, name: true } } },
+    });
+
+    await recordAudit({
+      organizationId,
+      actorId: session.userId,
+      action: "project.created",
+      targetType: "Project",
+      targetId: project.id,
+      metadata: { title: project.title, client: project.client.name },
     });
 
     await dispatchWorkflowEvent(organizationId, "PROJECT_CREATED", {

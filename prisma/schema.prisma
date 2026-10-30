@@ -18,6 +18,7 @@ model Organization {
   clients   Client[]
   projects  Project[]
   workflows Workflow[]
+  auditLogs AuditLog[]
 }
 
 model User {
@@ -28,6 +29,7 @@ model User {
   role           Role         @default(MEMBER)
   organizationId String
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  auditLogs      AuditLog[]
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 
@@ -93,6 +95,25 @@ model WorkflowRun {
   createdAt  DateTime  @default(now())
 
   @@index([workflowId, createdAt])
+}
+
+// Append-only history of who did what, scoped to a tenant
+model AuditLog {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  // Nullable so the history survives if the user is later deleted
+  actorId        String?
+  actor          User?        @relation(fields: [actorId], references: [id], onDelete: SetNull)
+  action         String
+  targetType     String
+  targetId       String?
+  metadata       Json?
+  ipAddress      String?
+  createdAt      DateTime     @default(now())
+
+  @@index([organizationId, createdAt])
+  @@index([organizationId, action])
 }
 
 enum Role {

@@ -6,6 +6,8 @@ import { NewProjectForm } from "@/components/NewProjectForm";
 import { NewClientForm } from "@/components/NewClientForm";
 import { StatusSelect } from "@/components/StatusSelect";
 import { NewWorkflowForm } from "@/components/NewWorkflowForm";
+import { LocalTime } from "@/components/LocalTime";
+import { AUDIT_LABELS, type AuditAction } from "@/lib/audit";
 
 export const dynamic = "force-dynamic";
 
@@ -46,6 +48,16 @@ export default async function DashboardPage() {
   ];
   const isAdmin = user.role === "ADMIN";
 
+  // Activity log is admin-only, matching the /api/audit-logs permission
+  const auditLogs = isAdmin
+    ? await prisma.auditLog.findMany({
+        where: { organizationId },
+        orderBy: { createdAt: "desc" },
+        take: 15,
+        include: { actor: { select: { name: true } } },
+      })
+    : [];
+
   return (
     <div className="min-h-screen">
       <header className="border-b border-slate-200 bg-white">
@@ -80,8 +92,17 @@ export default async function DashboardPage() {
           </div>
 
           <div className="rounded-xl border border-slate-200 bg-white lg:col-span-2">
-            <div className="border-b border-slate-200 px-5 py-4">
+            <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
               <h2 className="font-semibold">Projects</h2>
+              {projects.length > 0 && (
+                <a
+                  href="/api/projects/export"
+                  download
+                  className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium hover:bg-slate-100"
+                >
+                  Export CSV
+                </a>
+              )}
             </div>
             {projects.length === 0 ? (
               <p className="px-5 py-10 text-center text-sm text-slate-500">
@@ -141,6 +162,45 @@ export default async function DashboardPage() {
             )}
           </div>
         </section>
+
+        {isAdmin && (
+          <section className="rounded-xl border border-slate-200 bg-white">
+            <div className="border-b border-slate-200 px-5 py-4">
+              <h2 className="font-semibold">Activity log</h2>
+              <p className="text-sm text-slate-500">Who did what in your organization, newest first</p>
+            </div>
+            {auditLogs.length === 0 ? (
+              <p className="px-5 py-10 text-center text-sm text-slate-500">No activity recorded yet.</p>
+            ) : (
+              <ul className="divide-y divide-slate-100">
+                {auditLogs.map((log) => {
+                  const meta = (log.metadata ?? {}) as Record<string, unknown>;
+                  const subject =
+                    typeof meta.title === "string" ? meta.title : typeof meta.name === "string" ? meta.name : null;
+                  const label = AUDIT_LABELS[log.action as AuditAction] ?? log.action;
+                  const statusChange =
+                    typeof meta.from === "string" && typeof meta.to === "string"
+                      ? ` (${meta.from.replace("_", " ").toLowerCase()} → ${meta.to.replace("_", " ").toLowerCase()})`
+                      : "";
+                  return (
+                    <li key={log.id} className="flex flex-wrap items-baseline justify-between gap-2 px-5 py-3 text-sm">
+                      <p className="min-w-0">
+                        <span className="font-medium">{log.actor?.name ?? "Deleted user"}</span>{" "}
+                        <span className="text-slate-600">{label}</span>
+                        {subject && <span className="font-medium"> “{subject}”</span>}
+                        <span className="text-slate-500">{statusChange}</span>
+                      </p>
+                      <p className="shrink-0 text-xs text-slate-500">
+                        <LocalTime iso={log.createdAt.toISOString()} />
+                        {log.ipAddress && <span className="ml-2 hidden sm:inline">· {log.ipAddress}</span>}
+                      </p>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </section>
+        )}
       </main>
     </div>
   );

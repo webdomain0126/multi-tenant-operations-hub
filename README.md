@@ -1,8 +1,8 @@
 # Multi-Tenant Operations Hub
 
-**Live demo:** https://multi-tenant-operations-hub.vercel.app
+**🔗 Live demo:** https://multi-tenant-operations-hub.vercel.app
 
-**Try it:** sign in as admin@acme.test / password123, then in a private window as admin@globex.test / password123. Each organization sees only its own data. You can also create your own organization from the sign-up page.
+**Try it:** sign in as `admin@acme.test` / `password123`, then in a private window as `admin@globex.test` / `password123`. Each organization sees only its own data. You can also create your own organization from the sign-up page.
 
 A multi-tenant operations and workflow automation dashboard built with **Next.js 16 (App Router)**, **TypeScript**, **Tailwind CSS v4**, **Prisma** and **PostgreSQL**.
 
@@ -16,6 +16,8 @@ Multiple organizations share one database. Every row that belongs to a tenant ca
 - **Workflow automation** — "when a project is created / changes status → log activity / send a webhook", with a run history per workflow
 - **Role-based access** — only admins can delete projects or create automations
 - **Dashboard** — live counts by status, project list with inline status changes, automation health
+- **Audit log** — every sign-in, failed sign-in, create, update, delete and export is recorded per tenant with actor, target, details and IP address; admins see it as an activity feed
+- **CSV export** — streams a tenant's projects to an Excel-ready CSV in batches (constant memory), with formula-injection protection
 
 ## How tenant isolation works
 
@@ -31,7 +33,7 @@ Multiple organizations share one database. Every row that belongs to a tenant ca
 
 ```
 prisma/
-  schema.prisma          Organization, User, Client, Project, Workflow, WorkflowRun
+  schema.prisma          Organization, User, Client, Project, Workflow, WorkflowRun, AuditLog
   seed.ts                Two demo tenants for testing isolation
 src/
   proxy.ts               Route protection redirects
@@ -41,6 +43,7 @@ src/
     api.ts               requireSession, requireAdmin, Zod body parsing, error mapping
     validations.ts       All Zod schemas
     workflows.ts         Workflow event dispatcher
+    audit.ts             recordAudit helper (never breaks the request)
   app/
     api/auth/            register, login, logout
     api/projects/        list + create, and [id] get / patch / delete
@@ -65,6 +68,8 @@ src/
 | GET / POST | `/api/clients` | member | Client email unique per tenant |
 | GET | `/api/workflows` | member | Includes last 5 runs |
 | POST | `/api/workflows` | admin | Webhook URLs must be `https` |
+| GET | `/api/projects/export` | member | Streams CSV download, recorded in the audit log |
+| GET | `/api/audit-logs?limit=` | admin | Latest audit entries for the tenant |
 
 Errors return `{ error, details? }` with `401`, `403`, `404`, `409`, `422` or `500`.
 
@@ -92,5 +97,4 @@ Open http://localhost:3000 and log in as `admin@acme.test` / `password123`, then
 - Invite teammates to an organization (email invite tokens)
 - Postgres Row-Level Security as a second layer of isolation
 - Background queue (e.g. Inngest or a cron route) for retrying failed webhooks
-- Audit log and activity feed per project
 - Tests: an integration test that logs in as tenant A and asserts tenant B's ids return 404
